@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YACE - Web压力测试工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --secondary-color: #818cf8;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --background-color: #f3f4f6;
+            --card-background: #ffffff;
+        }
+
+        body {
+            background-color: var(--background-color);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .navbar-brand {
+            font-weight: 600;
+            font-size: 1.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .test-card {
+            background: var(--card-background);
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            margin-bottom: 1.5rem;
+        }
+
+        .test-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        .running { 
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .completed { 
+            background-color: var(--success-color);
+            color: white;
+        }
+
+        .failed { 
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .cancelled {
+            background-color: var(--warning-color);
+            color: white;
+        }
+
+        .btn {
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        .btn-info {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+            color: white;
+        }
+
+        .modal-content {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            padding: 1.5rem;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .form-control, .form-select {
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            border: 1px solid rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .form-label {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+
+        .form-text {
+            color: #6b7280;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            height: 300px;
+        }
+
+        #logContent {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Consolas', 'Monaco', monospace;
+            line-height: 1.5;
+        }
+
+        .log-line {
+            padding: 0.25rem 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .log-line:last-child {
+            border-bottom: none;
+        }
+
+        .log-line.error {
+            color: #f87171;
+            background-color: rgba(239,68,68,0.1);
+        }
+
+        .log-line.warning {
+            color: #fbbf24;
+            background-color: rgba(245,158,11,0.1);
+        }
+
+        .log-line .timestamp {
+            color: #9ca3af;
+            margin-right: 1rem;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-title i {
+            font-size: 1.1em;
+            color: var(--primary-color);
+        }
+
+        .advanced-options {
+            background-color: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .advanced-options .btn {
+            width: 100%;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f3f4f6;
+            border: none;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .advanced-options .btn:hover {
+            background-color: #e5e7eb;
+        }
+
+        .advanced-options .card {
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 1rem;
+        }
+
+        .advanced-options .card-subtitle {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #6b7280;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-lightning-charge"></i> YACE
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-bs-toggle="modal" data-bs-target="#newTestModal">
+                            <i class="bi bi-plus-circle"></i> 新建测试
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="section-title">
+                    <i class="bi bi-list-check"></i> 测试列表
+                </div>
+                <div id="testList" class="row g-4">
+                    <!-- 测试卡片将在这里动态添加 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建测试模态框 -->
+    <div class="modal fade" id="newTestModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle"></i> 新建压力测试
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="newTestForm">
+                        <div class="mb-4">
+                            <label class="form-label">目标URL</label>
+                            <input type="url" class="form-control" name="url" required placeholder="https://example.com">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">请求方法</label>
+                                    <select class="form-select" name="method">
+                                        <option value="GET">GET</option>
+                                        <option value="POST">POST</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">总请求数</label>
+                                    <input type="number" class="form-control" name="num_requests" value="100" min="1">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">并发线程数</label>
+                                    <input type="number" class="form-control" name="num_threads" value="10" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">请求超时(秒)</label>
+                                    <input type="number" class="form-control" name="timeout" value="30" min="1">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">请求头(JSON)</label>
+                            <textarea class="form-control" name="headers" rows="3" placeholder='{"Content-Type": "application/json"}'></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">POST数据(JSON)</label>
+                            <textarea class="form-control" name="data" rows="3" placeholder='{"key": "value"}'></textarea>
+                        </div>
+                        
+                        <!-- 高级选项折叠面板 -->
+                        <div class="advanced-options">
+                            <button class="btn mb-3" type="button" data-bs-toggle="collapse" data-bs-target="#advancedOptions">
+                                高级选项 <i class="bi bi-chevron-down"></i>
+                            </button>
+                            
+                            <div class="collapse" id="advancedOptions">
+                                <!-- IP伪造设置 -->
+                                <div class="card card-body mb-3">
+                                    <h6 class="card-subtitle mb-3">IP伪造设置</h6>
+                                    <div class="mb-3">
+                                        <div class="form-check mb-2">
+                                            <input type="checkbox" class="form-check-input" name="fake_ip" id="fakeIp">
+                                            <label class="form-check-label" for="fakeIp">启用IP伪造</label>
+                                        </div>
+                                        <div class="mb-3" id="fakeIpOptions" style="display: none;">
+                                            <label class="form-label">自定义IP列表（每行一个IP）</label>
+                                            <textarea class="form-control" name="fake_ip_list" rows="3" placeholder="1.2.3.4&#10;5.6.7.8"></textarea>
+                                            <div class="form-text">留空则使用随机生成的IP</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- User-Agent设置 -->
+                                <div class="card card-body mb-3">
+                                    <h6 class="card-subtitle mb-3">User-Agent设置</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">自定义User-Agent列表（每行一个）</label>
+                                        <textarea class="form-control" name="user_agents" rows="3" placeholder="Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)&#10;Mozilla/5.0 (compatible; Baiduspider-render/2.0; +http://www.baidu.com/search/spider.html)"></textarea>
+                                        <div class="form-text">留空则使用默认User-Agent列表</div>
+                                    </div>
+                                </div>
+
+                                <!-- Referer设置 -->
+                                <div class="card card-body mb-3">
+                                    <h6 class="card-subtitle mb-3">Referer设置</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">自定义Referer列表（每行一个）</label>
+                                        <textarea class="form-control" name="referers" rows="3" placeholder="https://www.google.com/&#10;https://www.bing.com/"></textarea>
+                                        <div class="form-text">留空则使用默认Referer列表</div>
+                                    </div>
+                                </div>
+
+                                <!-- 代理设置 -->
+                                <div class="card card-body mb-3">
+                                    <h6 class="card-subtitle mb-3">代理设置</h6>
+                                    <div class="mb-3">
+                                        <div class="form-check mb-2">
+                                            <input type="checkbox" class="form-check-input" name="use_proxy" id="useProxy">
+                                            <label class="form-check-label" for="useProxy">启用代理</label>
+                                        </div>
+                                        <div id="proxyOptions" style="display: none;">
+                                            <div class="mb-3">
+                                                <label class="form-label">代理类型</label>
+                                                <select class="form-select" name="proxy_type">
+                                                    <option value="http">HTTP</option>
+                                                    <option value="socks5">SOCKS5</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">代理列表（每行一个，格式：ip:port 或 user:pass@ip:port）</label>
+                                                <textarea class="form-control" name="proxy_list" rows="3" placeholder="127.0.0.1:8080&#10;user:pass@proxy.example.com:8080"></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">代理超时时间(秒)</label>
+                                                <input type="number" class="form-control" name="proxy_timeout" value="3" min="1">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 速率限制 -->
+                                <div class="card card-body mb-3">
+                                    <h6 class="card-subtitle mb-3">速率限制</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">每秒请求数限制（每个线程）</label>
+                                        <input type="number" class="form-control" name="rate_limit" min="0" step="0.1" placeholder="留空表示不限制">
+                                        <div class="form-text">设置每个线程每秒最大请求数，可以是小数</div>
+                                    </div>
+                                </div>
+
+                                <!-- SSL设置 -->
+                                <div class="card card-body mb-3">
+                                    <h6 class="card-subtitle mb-3">SSL设置</h6>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" name="no_verify_ssl" id="noVerifySsl">
+                                        <label class="form-check-label" for="noVerifySsl">忽略SSL证书验证</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="startNewTest()">
+                        <i class="bi bi-play-fill"></i> 开始测试
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 结果详情模态框 -->
+    <div class="modal fade" id="resultModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-graph-up"></i> 测试结果详情
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-info-circle"></i> 基本信息
+                                    </h5>
+                                    <div id="resultBasicInfo"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-exclamation-triangle"></i> 错误统计
+                                    </h5>
+                                    <div id="resultErrors"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-clock-history"></i> 响应时间分布
+                                    </h5>
+                                    <div id="responseTimeChart" class="chart-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日志查看模态框 -->
+    <div class="modal fade" id="logModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-terminal"></i> 测试日志
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="logContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // 全局变量
+        let activeTests = new Set();
+        let charts = {};
+
+        // 添加表单联动效果
+        document.addEventListener('DOMContentLoaded', function() {
+            // IP伪造选项联动
+            const fakeIpCheckbox = document.getElementById('fakeIp');
+            const fakeIpOptions = document.getElementById('fakeIpOptions');
+            fakeIpCheckbox.addEventListener('change', function() {
+                fakeIpOptions.style.display = this.checked ? 'block' : 'none';
+            });
+
+            // 代理选项联动
+            const useProxyCheckbox = document.getElementById('useProxy');
+            const proxyOptions = document.getElementById('proxyOptions');
+            useProxyCheckbox.addEventListener('change', function() {
+                proxyOptions.style.display = this.checked ? 'block' : 'none';
+            });
+        });
+
+        // 修改startNewTest函数，处理新增的表单字段
+        async function startNewTest() {
+            const form = document.getElementById('newTestForm');
+            const formData = new FormData(form);
+            const data = {};
+            
+            for (let [key, value] of formData.entries()) {
+                if (value === '') continue;
+                
+                // 处理JSON格式的字段
+                if (key === 'headers' || key === 'data') {
+                    try {
+                        data[key] = value ? JSON.parse(value) : {};
+                    } catch (e) {
+                        alert(`${key} JSON格式错误`);
+                        return;
+                    }
+                }
+                // 处理复选框
+                else if (key === 'fake_ip' || key === 'no_verify_ssl' || key === 'use_proxy') {
+                    data[key] = value === 'on';
+                }
+                // 处理多行文本框，转换为数组
+                else if (key === 'fake_ip_list' || key === 'user_agents' || key === 'referers' || key === 'proxy_list') {
+                    data[key] = value.split('\n').filter(line => line.trim());
+                }
+                // 处理数字类型
+                else if (key === 'num_requests' || key === 'num_threads' || key === 'timeout' || key === 'proxy_timeout') {
+                    data[key] = parseInt(value);
+                }
+                else if (key === 'rate_limit') {
+                    data[key] = value ? parseFloat(value) : null;
+                }
+                // 其他字段保持原样
+                else {
+                    data[key] = value;
+                }
+            }
+
+            // 处理代理相关的数据
+            if (data.use_proxy && data.proxy_list && data.proxy_list.length > 0) {
+                const proxyFileName = data.proxy_type === 'http' ? 'http_proxies.txt' : 'socks5_proxies.txt';
+                try {
+                    const proxyListResponse = await fetch('/api/create_temp_file', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            filename: proxyFileName,
+                            content: data.proxy_list.join('\n')
+                        })
+                    });
+                    if (!proxyListResponse.ok) throw new Error('创建代理列表文件失败');
+                    
+                    // 设置代理文件路径
+                    if (data.proxy_type === 'http') {
+                        data.http_proxies = proxyFileName;
+                    } else {
+                        data.socks5_proxies = proxyFileName;
+                    }
+                } catch (error) {
+                    alert('创建代理列表文件失败: ' + error.message);
+                    return;
+                }
+            }
+            delete data.proxy_list;
+            delete data.use_proxy;
+
+            // 处理IP伪造相关的数据
+            if (data.fake_ip && data.fake_ip_list && data.fake_ip_list.length > 0) {
+                data.fake_ip_file = 'fake_ips.txt';
+                // 创建临时文件
+                try {
+                    const ipListResponse = await fetch('/api/create_temp_file', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            filename: 'fake_ips.txt',
+                            content: data.fake_ip_list.join('\n')
+                        })
+                    });
+                    if (!ipListResponse.ok) throw new Error('创建IP列表文件失败');
+                } catch (error) {
+                    alert('创建IP列表文件失败: ' + error.message);
+                    return;
+                }
+            }
+            delete data.fake_ip_list;
+
+            try {
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                
+                if (result.test_id) {
+                    activeTests.add(result.test_id);
+                    bootstrap.Modal.getInstance(document.getElementById('newTestModal')).hide();
+                    form.reset();
+                    updateTestList();
+                }
+            } catch (error) {
+                alert('启动测试失败: ' + error.message);
+            }
+        }
+
+        // 更新测试列表
+        async function updateTestList() {
+            try {
+                const response = await fetch('/api/tests');
+                const tests = await response.json();
+                
+                const testList = document.getElementById('testList');
+                testList.innerHTML = tests.map(test => `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card test-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="card-title">${test.config.url}</h5>
+                                    <span class="badge status-badge ${test.status}">${test.status}</span>
+                                </div>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        开始时间: ${new Date(test.start_time).toLocaleString()}
+                                    </small>
+                                </p>
+                                <div class="d-flex justify-content-between">
+                                    <button class="btn btn-sm btn-primary" onclick="showResults('${test.id}')" ${test.status === 'running' ? 'disabled' : ''}>
+                                        查看结果
+                                    </button>
+                                    <div>
+                                        ${test.status === 'running' ? 
+                                            `<button class="btn btn-sm btn-danger" onclick="cancelTest('${test.id}')">
+                                                取消测试
+                                            </button>` : ''}
+                                        <button class="btn btn-sm btn-info" onclick="showLogs('${test.id}')">
+                                            查看日志
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                // 继续轮询运行中的测试
+                for (let test of tests) {
+                    if (test.status === 'running' && activeTests.has(test.id)) {
+                        setTimeout(() => updateTestList(), 1000);
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.error('更新测试列表失败:', error);
+            }
+        }
+
+        // 显示测试结果
+        async function showResults(testId) {
+            try {
+                const response = await fetch(`/api/test/${testId}/results`);
+                const results = await response.json();
+                
+                // 更新基本信息
+                const basicInfo = document.getElementById('resultBasicInfo');
+                const totalRequests = Object.values(results.success_count)[0] + Object.values(results.failure_count)[0];
+                const successRate = ((Object.values(results.success_count)[0] / totalRequests) * 100).toFixed(2);
+                
+                basicInfo.innerHTML = `
+                    <p>总请求数: ${totalRequests}</p>
+                    <p>成功率: ${successRate}%</p>
+                    <p>开始时间: ${new Date(results.start_time).toLocaleString()}</p>
+                    <p>结束时间: ${new Date(results.end_time).toLocaleString()}</p>
+                `;
+
+                // 更新错误统计
+                const errorsDiv = document.getElementById('resultErrors');
+                errorsDiv.innerHTML = `
+                    <p>失败请求: ${Object.values(results.failure_count)[0]}</p>
+                    <p>代理错误: ${Object.values(results.proxy_errors)[0]}</p>
+                    <p>代理超时: ${Object.values(results.proxy_timeouts)[0]}</p>
+                    <p>SSL错误: ${Object.values(results.ssl_errors)[0]}</p>
+                `;
+
+                // 更新响应时间图表
+                const responseTimes = Object.values(results.response_times)[0];
+                if (responseTimes && responseTimes.length > 0) {
+                    const ctx = document.getElementById('responseTimeChart');
+                    
+                    if (charts[testId]) {
+                        charts[testId].destroy();
+                    }
+                    
+                    charts[testId] = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: Array.from({length: responseTimes.length}, (_, i) => i + 1),
+                            datasets: [{
+                                label: '响应时间 (ms)',
+                                data: responseTimes,
+                                borderColor: 'rgb(75, 192, 192)',
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // 显示结果模态框
+                new bootstrap.Modal(document.getElementById('resultModal')).show();
+            } catch (error) {
+                console.error('获取测试结果失败:', error);
+                alert('获取测试结果失败');
+            }
+        }
+
+        // 取消测试
+        async function cancelTest(testId) {
+            try {
+                const response = await fetch(`/api/test/${testId}/cancel`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (result.status === 'cancelling') {
+                    alert('正在取消测试，请稍候...');
+                }
+            } catch (error) {
+                console.error('取消测试失败:', error);
+                alert('取消测试失败');
+            }
+        }
+
+        // 显示日志
+        let currentLogId = -1;
+        let logUpdateInterval = null;
+
+        async function showLogs(testId) {
+            // 重置日志状态
+            currentLogId = -1;
+            const logContent = document.getElementById('logContent');
+            logContent.innerHTML = '';
+            
+            // 显示模态框
+            const logModal = new bootstrap.Modal(document.getElementById('logModal'));
+            logModal.show();
+            
+            // 清除之前的更新间隔
+            if (logUpdateInterval) {
+                clearInterval(logUpdateInterval);
+            }
+            
+            // 开始定期更新日志
+            async function updateLogs() {
+                try {
+                    const response = await fetch(`/api/test/${testId}/logs?last_log_id=${currentLogId}`);
+                    const data = await response.json();
+                    
+                    if (data.logs && data.logs.length > 0) {
+                        data.logs.forEach(log => {
+                            const logLine = document.createElement('div');
+                            logLine.className = `log-line ${log.level}`;
+                            logLine.innerHTML = `<span class="timestamp">[${new Date(log.timestamp).toLocaleTimeString()}]</span> ${log.message}`;
+                            logContent.appendChild(logLine);
+                        });
+                        
+                        currentLogId = data.last_log_id;
+                        logContent.scrollTop = logContent.scrollHeight;
+                    }
+                    
+                    // 检查测试是否已完成
+                    const statusResponse = await fetch(`/api/test/${testId}/status`);
+                    const statusData = await statusResponse.json();
+                    if (statusData.status !== 'running') {
+                        clearInterval(logUpdateInterval);
+                    }
+                } catch (error) {
+                    console.error('获取日志失败:', error);
+                    clearInterval(logUpdateInterval);
+                }
+            }
+            
+            // 立即更新一次日志
+            await updateLogs();
+            
+            // 设置定期更新
+            logUpdateInterval = setInterval(updateLogs, 1000);
+            
+            // 当模态框关闭时停止更新
+            document.getElementById('logModal').addEventListener('hidden.bs.modal', function () {
+                if (logUpdateInterval) {
+                    clearInterval(logUpdateInterval);
+                    logUpdateInterval = null;
+                }
+            });
+        }
+
+        // 添加日志样式
+        const style = document.createElement('style');
+        style.textContent = `
+            .log-line {
+                padding: 2px 5px;
+                border-bottom: 1px solid #eee;
+            }
+            .log-line.error {
+                color: #dc3545;
+                background-color: #fff5f5;
+            }
+            .log-line.warning {
+                color: #ffc107;
+                background-color: #fff8e6;
+            }
+            .log-line .timestamp {
+                color: #666;
+                margin-right: 10px;
+            }
+            #logContent {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 页面加载完成后更新测试列表
+        document.addEventListener('DOMContentLoaded', updateTestList);
+    </script>
+</body>
+</html> 

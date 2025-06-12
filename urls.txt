@@ -1,0 +1,9 @@
+# URL列表文件
+# 每行一个URL
+# 支持HTTP和HTTPS
+# 示例：
+https://www.example.com
+http://api.example.com/test
+https://example.com/api/v1/data
+# 支持注释，以#开头的行将被忽略
+# 空行也会被忽略 
