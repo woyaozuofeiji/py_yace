@@ -64,8 +64,23 @@ def run_load_test(test_id, config):
             config['socks5_proxies'] = os.path.join(TEMP_DIR, os.path.basename(config['socks5_proxies']))
             
         # 初始化管理器
-        url_manager = URLManager(url=config.get('url'), url_file=config.get('url_file'))
-        add_log(test_id, f"目标URL: {config.get('url')}", "info")
+        url_file = config.get('url_file')
+        if url_file:
+            url_file = os.path.join(TEMP_DIR, os.path.basename(url_file))
+            if not os.path.exists(url_file):
+                raise Exception(f"URL文件不存在: {url_file}")
+                
+        url_manager = URLManager(url=config.get('url'), url_file=url_file)
+        
+        # 记录测试目标
+        if url_file:
+            with open(url_file, 'r') as f:
+                urls = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            add_log(test_id, f"测试目标: {len(urls)} 个URL", "info")
+            for url in urls:
+                add_log(test_id, f"URL: {url}", "info")
+        else:
+            add_log(test_id, f"测试目标: {config.get('url')}", "info")
         
         ip_manager = None
         if config.get('fake_ip'):

@@ -313,8 +313,9 @@
                 <div class="modal-body">
                     <form id="newTestForm">
                         <div class="mb-4">
-                            <label class="form-label">目标URL</label>
-                            <input type="url" class="form-control" name="url" required placeholder="https://example.com">
+                            <label class="form-label">目标URL（每行一个）</label>
+                            <textarea class="form-control" name="url" rows="3" required placeholder="https://example1.com&#10;https://example2.com"></textarea>
+                            <div class="form-text">可以输入多个URL，每行一个</div>
                         </div>
                         <div class="row">
                             <div class="col-md-6">
@@ -583,6 +584,69 @@
                 else if (key === 'rate_limit') {
                     data[key] = value ? parseFloat(value) : null;
                 }
+                // 处理URL字段，转换为数组或文件
+                else if (key === 'url') {
+                    // 清理和验证URL
+                    const urls = value.split('\n')
+                        .map(line => line.trim())
+                        .map(line => line.replace(/^@/, '')) // 移除开头的@符号
+                        .filter(line => line)
+                        .map(line => {
+                            // 如果URL不以http://或https://开头，添加https://
+                            if (!line.match(/^https?:\/\//)) {
+                                return 'https://' + line;
+                            }
+                            return line;
+                        });
+                    
+                    console.log('处理的URLs:', urls); // 调试日志
+                    
+                    // 验证所有URL格式
+                    const invalidUrls = urls.filter(url => {
+                        try {
+                            new URL(url);
+                            return false; // URL 有效
+                        } catch {
+                            return true;  // URL 无效
+                        }
+                    });
+                    
+                    if (invalidUrls.length > 0) {
+                        alert(`以下URL格式无效：\n${invalidUrls.join('\n')}\n\n请确保URL格式正确`);
+                        return;
+                    }
+                    
+                    if (urls.length === 0) {
+                        alert('请输入至少一个有效的URL');
+                        return;
+                    }
+                    
+                    // 无论是单个还是多个URL，都使用URL文件
+                    try {
+                        console.log('创建URL文件，内容:', urls.join('\n')); // 调试日志
+                        const timestamp = new Date().getTime();
+                        const filename = `urls_${timestamp}.txt`;
+                        const urlListResponse = await fetch('/api/create_temp_file', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                filename: filename,
+                                content: urls.join('\n')
+                            })
+                        });
+                        if (!urlListResponse.ok) throw new Error('创建URL列表文件失败');
+                        const responseData = await urlListResponse.json();
+                        console.log('创建URL文件响应:', responseData); // 调试日志
+                        data.url_file = filename;
+                        delete data.url;
+                    } catch (error) {
+                        console.error('创建URL文件错误:', error); // 调试日志
+                        alert('创建URL列表文件失败: ' + error.message);
+                        return;
+                    }
+                }
                 // 其他字段保持原样
                 else {
                     data[key] = value;
@@ -643,6 +707,7 @@
             delete data.fake_ip_list;
 
             try {
+                console.log('发送测试请求，数据:', data); // 调试日志
                 const response = await fetch('/api/test', {
                     method: 'POST',
                     headers: {
@@ -650,15 +715,26 @@
                     },
                     body: JSON.stringify(data)
                 });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('服务器响应错误:', response.status, errorText); // 调试日志
+                    throw new Error(`服务器响应错误 (${response.status}): ${errorText}`);
+                }
+                
                 const result = await response.json();
+                console.log('测试响应结果:', result); // 调试日志
                 
                 if (result.test_id) {
                     activeTests.add(result.test_id);
                     bootstrap.Modal.getInstance(document.getElementById('newTestModal')).hide();
                     form.reset();
                     updateTestList();
+                } else {
+                    throw new Error('服务器没有返回测试ID');
                 }
             } catch (error) {
+                console.error('启动测试失败:', error); // 调试日志
                 alert('启动测试失败: ' + error.message);
             }
         }
@@ -675,9 +751,14 @@
                         <div class="card test-card">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h5 class="card-title">${test.config.url}</h5>
+                                    <h5 class="card-title">
+                                        ${test.config.url_file ? '多URL测试' : test.config.url}
+                                    </h5>
                                     <span class="badge status-badge ${test.status}">${test.status}</span>
                                 </div>
+                                ${test.config.url_file ? 
+                                    `<p class="card-text small text-muted">使用URL列表文件: ${test.config.url_file}</p>` : 
+                                    ''}
                                 <p class="card-text">
                                     <small class="text-muted">
                                         开始时间: ${new Date(test.start_time).toLocaleString()}
@@ -722,24 +803,89 @@
                 
                 // 更新基本信息
                 const basicInfo = document.getElementById('resultBasicInfo');
-                const totalRequests = Object.values(results.success_count)[0] + Object.values(results.failure_count)[0];
-                const successRate = ((Object.values(results.success_count)[0] / totalRequests) * 100).toFixed(2);
+                let totalStats = {
+                    totalRequests: 0,
+                    totalSuccess: 0
+                };
                 
-                basicInfo.innerHTML = `
-                    <p>总请求数: ${totalRequests}</p>
-                    <p>成功率: ${successRate}%</p>
+                // 计算所有URL的总统计
+                Object.keys(results.success_count).forEach(url => {
+                    const success = results.success_count[url];
+                    const failure = results.failure_count[url];
+                    totalStats.totalRequests += success + failure;
+                    totalStats.totalSuccess += success;
+                });
+                
+                const overallSuccessRate = ((totalStats.totalSuccess / totalStats.totalRequests) * 100).toFixed(2);
+                
+                let statsHtml = `
+                    <p>总请求数: ${totalStats.totalRequests}</p>
+                    <p>总体成功率: ${overallSuccessRate}%</p>
                     <p>开始时间: ${new Date(results.start_time).toLocaleString()}</p>
                     <p>结束时间: ${new Date(results.end_time).toLocaleString()}</p>
                 `;
+                
+                // 如果有多个URL，显示每个URL的详细统计
+                if (Object.keys(results.success_count).length > 1) {
+                    statsHtml += '<hr><h6>各URL统计：</h6>';
+                    Object.keys(results.success_count).forEach(url => {
+                        const success = results.success_count[url];
+                        const failure = results.failure_count[url];
+                        const total = success + failure;
+                        const successRate = ((success / total) * 100).toFixed(2);
+                        statsHtml += `
+                            <div class="mt-2">
+                                <p class="mb-1"><strong>${url}</strong></p>
+                                <p class="mb-1 small">请求数: ${total}</p>
+                                <p class="mb-1 small">成功率: ${successRate}%</p>
+                            </div>
+                        `;
+                    });
+                }
+                
+                basicInfo.innerHTML = statsHtml;
 
                 // 更新错误统计
                 const errorsDiv = document.getElementById('resultErrors');
-                errorsDiv.innerHTML = `
-                    <p>失败请求: ${Object.values(results.failure_count)[0]}</p>
-                    <p>代理错误: ${Object.values(results.proxy_errors)[0]}</p>
-                    <p>代理超时: ${Object.values(results.proxy_timeouts)[0]}</p>
-                    <p>SSL错误: ${Object.values(results.ssl_errors)[0]}</p>
+                let totalErrors = {
+                    failures: 0,
+                    proxyErrors: 0,
+                    proxyTimeouts: 0,
+                    sslErrors: 0
+                };
+                
+                // 计算所有URL的总错误数
+                Object.keys(results.failure_count).forEach(url => {
+                    totalErrors.failures += results.failure_count[url];
+                    totalErrors.proxyErrors += results.proxy_errors[url];
+                    totalErrors.proxyTimeouts += results.proxy_timeouts[url];
+                    totalErrors.sslErrors += results.ssl_errors[url];
+                });
+                
+                let errorsHtml = `
+                    <p>总失败请求: ${totalErrors.failures}</p>
+                    <p>总代理错误: ${totalErrors.proxyErrors}</p>
+                    <p>总代理超时: ${totalErrors.proxyTimeouts}</p>
+                    <p>总SSL错误: ${totalErrors.sslErrors}</p>
                 `;
+                
+                // 如果有多个URL，显示每个URL的详细错误统计
+                if (Object.keys(results.failure_count).length > 1) {
+                    errorsHtml += '<hr><h6>各URL错误统计：</h6>';
+                    Object.keys(results.failure_count).forEach(url => {
+                        errorsHtml += `
+                            <div class="mt-2">
+                                <p class="mb-1"><strong>${url}</strong></p>
+                                <p class="mb-1 small">失败请求: ${results.failure_count[url]}</p>
+                                <p class="mb-1 small">代理错误: ${results.proxy_errors[url]}</p>
+                                <p class="mb-1 small">代理超时: ${results.proxy_timeouts[url]}</p>
+                                <p class="mb-1 small">SSL错误: ${results.ssl_errors[url]}</p>
+                            </div>
+                        `;
+                    });
+                }
+                
+                errorsDiv.innerHTML = errorsHtml;
 
                 // 更新响应时间图表
                 const responseTimes = Object.values(results.response_times)[0];
@@ -826,7 +972,31 @@
                         data.logs.forEach(log => {
                             const logLine = document.createElement('div');
                             logLine.className = `log-line ${log.level}`;
-                            logLine.innerHTML = `<span class="timestamp">[${new Date(log.timestamp).toLocaleTimeString()}]</span> ${log.message}`;
+                            
+                            // 处理常见错误消息，使其更友好
+                            let message = log.message;
+                            if (log.level === 'error') {
+                                if (message.includes('NameResolutionError')) {
+                                    message = message.replace(/HTTPConnectionPool.*?: /, '')
+                                                   .replace(/\(Caused by NameResolutionError\(.*?\)\)/, '')
+                                                   .replace(/Failed to resolve '(.*?)'.*/, '无法解析域名 "$1"，请检查URL是否正确');
+                                } else if (message.includes('ConnectTimeoutError')) {
+                                    message = message.replace(/HTTPConnectionPool.*?: /, '')
+                                                   .replace(/\(Caused by ConnectTimeoutError\(.*?\)\)/, '')
+                                                   .replace(/Max retries exceeded with url: (.*?)$/, '连接超时：$1，请检查目标服务器是否可访问');
+                                } else if (message.includes('ConnectionRefusedError')) {
+                                    message = message.replace(/HTTPConnectionPool.*?: /, '')
+                                                   .replace(/\(Caused by ConnectionRefusedError\(.*?\)\)/, '')
+                                                   .replace(/Max retries exceeded with url: (.*?)$/, '连接被拒绝：$1，请检查目标服务器是否正常运行');
+                                } else if (message.includes('SSLError')) {
+                                    message = message.replace(/HTTPSConnectionPool.*?: /, '')
+                                                   .replace(/\[SSL: .*?\] /, '')
+                                                   .replace(/\(.*?\)/, '')
+                                                   .replace(/Max retries exceeded with url: (.*?)$/, 'SSL证书验证失败：$1，如果确认目标网站安全，可以勾选"忽略SSL证书验证"选项');
+                                }
+                            }
+                            
+                            logLine.innerHTML = `<span class="timestamp">[${new Date(log.timestamp).toLocaleTimeString()}]</span> ${message}`;
                             logContent.appendChild(logLine);
                         });
                         

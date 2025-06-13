@@ -27,22 +27,42 @@ class URLManager:
         self.urls: List[str] = []
         self.current_url: str = None
         
-        if url:
-            self.urls.append(url)
-            self.current_url = url
+        def process_url(url: str) -> Optional[str]:
+            """处理并验证URL"""
+            if not url:
+                return None
+                
+            # 确保URL是完整的URL
+            if not url.startswith(('http://', 'https://')):
+                url = f'https://{url}'
+                
+            try:
+                # 验证URL格式
+                parsed = urlparse(url)
+                if parsed.netloc:  # 只要有域名部分就认为是有效的
+                    return url
+                print(f"警告: 忽略无效URL: {url}")
+                return None
+            except Exception as e:
+                print(f"警告: 忽略无效URL: {url} ({str(e)})")
+                return None
         
+        # 处理单个URL
+        if url:
+            processed_url = process_url(url)
+            if processed_url:
+                self.urls.append(processed_url)
+                self.current_url = processed_url
+        
+        # 处理URL文件
         if url_file and os.path.exists(url_file):
             with open(url_file, 'r') as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith('#'):
-                        try:
-                            # 简单验证URL格式
-                            parsed = urlparse(line)
-                            if parsed.scheme in ['http', 'https'] and parsed.netloc:
-                                self.urls.append(line)
-                        except Exception:
-                            print(f"警告: 忽略无效URL: {line}")
+                        processed_url = process_url(line)
+                        if processed_url:
+                            self.urls.append(processed_url)
             
             if not self.current_url and self.urls:
                 self.current_url = random.choice(self.urls)
@@ -234,41 +254,48 @@ class LoadTester:
 
     def make_request(self, check_cancel=None) -> None:
         """执行单个请求"""
-        while True:
-            if check_cancel and check_cancel():
-                break
-                
-            # 获取目标URL（如果有多个URL则随机选择）
-            if self.url_manager.has_multiple_urls():
-                target_url = self.url_manager.get_random_url()
-            else:
-                target_url = self.url_manager.get_current_url()
+        if check_cancel and check_cancel():
+            return
+            
+        # 随机获取目标URL
+        target_url = self.url_manager.get_random_url()
+        if not target_url:
+            return
 
-            if not target_url:
-                break
-
-            self._init_url_stats(target_url)
+        self._init_url_stats(target_url)
+        
+        try:
+            start_time = time.time()
+            headers = self.get_request_headers()
+            
+            # 获取代理（如果启用）
+            proxies = None
+            current_timeout = self.timeout
+            if self.proxy_manager and self.proxy_manager.has_proxies():
+                proxies = self.proxy_manager.get_random_proxy(self.proxy_type)
+                if proxies:  # 只有在成功获取代理时才使用代理超时
+                    current_timeout = self.proxy_timeout
+                    self.logger(f"使用代理: {proxies}")
             
             try:
-                start_time = time.time()
-                headers = self.get_request_headers()
+                # 确保URL是完整的URL
+                if not target_url.startswith(('http://', 'https://')):
+                    target_url = f'https://{target_url}'
                 
-                # 获取代理（如果启用）
-                proxies = None
-                current_timeout = self.timeout
-                if self.proxy_manager and self.proxy_manager.has_proxies():
-                    proxies = self.proxy_manager.get_random_proxy(self.proxy_type)
-                    if proxies:  # 只有在成功获取代理时才使用代理超时
-                        current_timeout = self.proxy_timeout
-                        self.logger(f"使用代理: {proxies}")
+                # 验证URL格式
+                parsed = urlparse(target_url)
+                if not parsed.netloc:
+                    raise requests.exceptions.InvalidURL(f"无效的URL: {target_url}")
                 
+                # 发送请求
                 if self.method == 'GET':
                     response = requests.get(
                         target_url, 
                         headers=headers,
                         proxies=proxies,
                         timeout=current_timeout,
-                        verify=self.verify_ssl
+                        verify=self.verify_ssl,
+                        allow_redirects=True
                     )
                 else:
                     response = requests.post(
@@ -277,50 +304,80 @@ class LoadTester:
                         json=self.data,
                         proxies=proxies,
                         timeout=current_timeout,
-                        verify=self.verify_ssl
+                        verify=self.verify_ssl,
+                        allow_redirects=True
                     )
+            except requests.exceptions.InvalidURL as e:
+                self.failure_count[target_url] += 1
+                error_msg = f"无效的URL: {target_url}"
+                self.errors[target_url].append(error_msg)
+                self.logger(error_msg, "error")
+                return
+            
+            elapsed_time = time.time() - start_time
+            self.response_times[target_url].append(elapsed_time)
+            
+            if response.status_code == 200:
+                self.success_count[target_url] += 1
+                self.logger(f"请求成功: {response.status_code}, 耗时: {elapsed_time:.2f}秒")
+            else:
+                self.failure_count[target_url] += 1
+                self.errors[target_url].append(f"状态码: {response.status_code}")
+                self.logger(f"请求失败: {response.status_code}, 耗时: {elapsed_time:.2f}秒", "error")
                 
-                elapsed_time = time.time() - start_time
-                self.response_times[target_url].append(elapsed_time)
-                
-                if response.status_code == 200:
-                    self.success_count[target_url] += 1
-                    self.logger(f"请求成功: {response.status_code}, 耗时: {elapsed_time:.2f}秒")
-                else:
-                    self.failure_count[target_url] += 1
-                    self.errors[target_url].append(f"状态码: {response.status_code}")
-                    self.logger(f"请求失败: {response.status_code}, 耗时: {elapsed_time:.2f}秒", "error")
+            # 如果设置了请求速率限制，则等待适当的时间
+            if self.request_interval:
+                time_to_wait = self.request_interval - elapsed_time
+                if time_to_wait > 0:
+                    time.sleep(time_to_wait)
                     
-                # 如果设置了请求速率限制，则等待适当的时间
-                if self.request_interval:
-                    time_to_wait = self.request_interval - elapsed_time
-                    if time_to_wait > 0:
-                        time.sleep(time_to_wait)
-                        
-            except requests.exceptions.ProxyError as e:
-                self.failure_count[target_url] += 1
-                self.proxy_errors[target_url] += 1
-                self.errors[target_url].append(f"代理错误: {str(e)}")
-                self.logger(f"代理错误: {str(e)}", "error")
-            except requests.exceptions.ConnectTimeout as e:
-                self.failure_count[target_url] += 1
-                if proxies:
-                    self.proxy_timeouts[target_url] += 1
-                self.errors[target_url].append(f"连接超时: {str(e)}")
-                self.logger(f"连接超时: {str(e)}", "error")
-            except requests.exceptions.SSLError as e:
-                self.failure_count[target_url] += 1
-                self.ssl_errors[target_url] += 1
-                self.errors[target_url].append(f"SSL错误: {str(e)}")
-                self.logger(f"SSL错误: {str(e)}", "error")
-            except Exception as e:
-                self.failure_count[target_url] += 1
-                self.errors[target_url].append(f"其他错误: {str(e)}")
-                self.logger(f"其他错误: {str(e)}", "error")
+        except requests.exceptions.ProxyError as e:
+            self.failure_count[target_url] += 1
+            self.proxy_errors[target_url] += 1
+            self.errors[target_url].append(f"代理错误: {str(e)}")
+            self.logger(f"代理错误: {str(e)}", "error")
+        except requests.exceptions.ConnectTimeout as e:
+            self.failure_count[target_url] += 1
+            if proxies:
+                self.proxy_timeouts[target_url] += 1
+            self.errors[target_url].append(f"连接超时: {str(e)}")
+            self.logger(f"连接超时: {str(e)}", "error")
+        except requests.exceptions.SSLError as e:
+            self.failure_count[target_url] += 1
+            self.ssl_errors[target_url] += 1
+            self.errors[target_url].append(f"SSL错误: {str(e)}")
+            self.logger(f"SSL错误: {str(e)}", "error")
+        except requests.exceptions.RequestException as e:
+            self.failure_count[target_url] += 1
+            error_msg = str(e)
+            
+            # 处理各种请求异常
+            if isinstance(e, requests.exceptions.ConnectionError):
+                if "Failed to resolve" in error_msg:
+                    error_msg = f"无法解析域名: {target_url}"
+                elif "Connection refused" in error_msg:
+                    error_msg = f"连接被拒绝: {target_url}"
+                elif "Connection reset by peer" in error_msg:
+                    error_msg = f"连接被重置: {target_url}"
+                else:
+                    error_msg = f"连接错误: {target_url}"
+            elif isinstance(e, requests.exceptions.ReadTimeout):
+                error_msg = f"读取超时: {target_url}"
+            elif isinstance(e, requests.exceptions.ConnectTimeout):
+                error_msg = f"连接超时: {target_url}"
+            elif isinstance(e, requests.exceptions.SSLError):
+                error_msg = f"SSL错误: {target_url}"
+            elif isinstance(e, requests.exceptions.InvalidURL):
+                error_msg = f"无效的URL: {target_url}"
+            else:
+                error_msg = f"请求错误: {target_url} - {str(e)}"
                 
-            # 如果是单URL测试，完成一次请求后就退出循环
-            if not self.url_manager.has_multiple_urls():
-                break
+            self.errors[target_url].append(error_msg)
+            self.logger(error_msg, "error")
+        except Exception as e:
+            self.failure_count[target_url] += 1
+            self.errors[target_url].append(f"其他错误: {str(e)}")
+            self.logger(f"其他错误: {str(e)}", "error")
 
     def run(self, check_cancel=None) -> None:
         """运行测试"""
@@ -328,6 +385,8 @@ class LoadTester:
         
         with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
             futures = []
+            
+            # 随机分配请求
             for _ in range(self.num_requests):
                 if check_cancel and check_cancel():
                     break
